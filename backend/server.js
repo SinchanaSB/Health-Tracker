@@ -8,7 +8,7 @@ app.use(cors());
 
 // 🧠 Replace with your actual MongoDB connection string
 mongoose
-  .connect("mongodb+srv://rishikahs26_db_user:3JbmN0OU4vWuywvL@cluster1.pqwn5zo.mongodb.net/")
+  .connect("      ")
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB Error:", err));
 
