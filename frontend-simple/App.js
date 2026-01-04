@@ -3,243 +3,294 @@ import {
   View,
   Text,
   TextInput,
-  Button,
-  FlatList,
   TouchableOpacity,
-  Image,
+  FlatList,
   Alert,
+  Switch,
+  Image,
+  Modal,
+  SafeAreaView,
+  ScrollView,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const { manifest } = Constants;
-const API_URL = manifest?.debuggerHost
-  ? `http://${manifest.debuggerHost.split(":")[0]}:5000`
-  : "http://10.201.14.118:5000";
+const API_URL = "http://10.201.211.101:5000"; // replace with your backend IP
 
 export default function App() {
-  const [page, setPage] = useState("profile");
-  const [profile, setProfile] = useState({ name: "", age: "", conditions: "" });
+  const [user, setUser] = useState(null);
+  const [profilePic, setProfilePic] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [newAppointment, setNewAppointment] = useState({ date: "", doctor: "" });
-  const [prescriptions, setPrescriptions] = useState([]);
-  const [newPrescription, setNewPrescription] = useState({ name: "", image: "" });
+  const [darkMode, setDarkMode] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [page, setPage] = useState("dashboard");
+  const [prescriptionModal, setPrescriptionModal] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [prescriptionText, setPrescriptionText] = useState("");
+
+  const bgColor = darkMode ? "#0f172a" : "#e0f2fe";
+  const textColor = darkMode ? "white" : "black";
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const res1 = await fetch(`${API_URL}/appointments`);
-        setAppointments(await res1.json());
-      } catch (err) {
-        Alert.alert("Error", "Could not load appointments");
-      }
-
-      try {
-        const res2 = await fetch(`${API_URL}/prescriptions`);
-        setPrescriptions(await res2.json());
-      } catch (err) {
-        Alert.alert("Error", "Could not load prescriptions");
+    const loadUser = async () => {
+      const savedUser = await AsyncStorage.getItem("user");
+      if (savedUser) {
+        const u = JSON.parse(savedUser);
+        setUser(u);
+        fetchAppointments(u.email);
       }
     };
-    loadData();
+    loadUser();
   }, []);
 
-  const handleSaveProfile = async () => {
-    if (!profile.name || !profile.age)
-      return Alert.alert("Error", "Please fill in name and age");
+  const fetchAppointments = async (email) => {
     try {
-      await fetch(`${API_URL}/profile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profile),
-      });
-      Alert.alert("✅ Success", "Profile saved successfully!");
+      const res = await fetch(`${API_URL}/appointments/${email}`);
+      const data = await res.json();
+      setAppointments(data);
     } catch {
-      Alert.alert("Error", "Failed to save profile");
+      Alert.alert("Error", "Could not load appointments");
     }
   };
 
-  const handleAddAppointment = async () => {
-    if (!newAppointment.date || !newAppointment.doctor)
-      return Alert.alert("Error", "Enter date and doctor name");
-    try {
-      await fetch(`${API_URL}/appointments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newAppointment),
-      });
-      setAppointments([...appointments, newAppointment]);
-      setNewAppointment({ date: "", doctor: "" });
-    } catch {
-      Alert.alert("Error", "Failed to add appointment");
-    }
-  };
-
-  const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      return Alert.alert("Permission denied", "Allow access to photo library");
-    }
-
+  const pickProfileImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: [ImagePicker.MediaType.IMAGE],
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.7,
+      aspect: [1, 1],
+      quality: 0.5,
     });
-
-    if (!result.canceled && result.assets?.length > 0) {
-      setNewPrescription({ ...newPrescription, image: result.assets[0].uri });
-    }
+    if (!result.canceled) setProfilePic(result.assets[0].uri);
   };
 
-  const handleAddPrescription = async () => {
-    if (!newPrescription.name)
-      return Alert.alert("Error", "Enter prescription name");
+  const handleLogin = async () => {
+    if (!email || !password || !name) return Alert.alert("Fill all fields");
     try {
-      await fetch(`${API_URL}/prescriptions`, {
+      const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newPrescription),
+        body: JSON.stringify({ email, password, name }),
       });
-      setPrescriptions([...prescriptions, newPrescription]);
-      setNewPrescription({ name: "", image: "" });
-    } catch {
-      Alert.alert("Error", "Failed to save prescription");
+      const data = await res.json();
+      if (data.success) {
+        await AsyncStorage.setItem("user", JSON.stringify(data.user));
+        setUser(data.user);
+        fetchAppointments(data.user.email);
+        setPage("dashboard");
+        Alert.alert("✅ Login successful");
+      } else Alert.alert("❌", data.message || "Login failed");
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Login failed");
     }
   };
 
-  const TabButton = ({ label, value }) => (
-    <TouchableOpacity
-      onPress={() => setPage(value)}
-      style={{
-        backgroundColor: page === value ? "#2563eb" : "#e2e8f0",
-        padding: 10,
-        borderRadius: 10,
-        width: "30%",
-        alignItems: "center",
-      }}
-    >
-      <Text style={{ color: page === value ? "white" : "black" }}>{label}</Text>
-    </TouchableOpacity>
-  );
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem("user");
+    setUser(null);
+    setPage("dashboard");
+  };
+
+  const addAppointment = async () => {
+    if (!newAppointment.date || !newAppointment.doctor) return Alert.alert("Enter all details");
+    try {
+      const res = await fetch(`${API_URL}/appointments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, ...newAppointment }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAppointments([...appointments, data.appointment]);
+        setNewAppointment({ date: "", doctor: "" });
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Could not add appointment");
+    }
+  };
+
+  const markAsDone = (appointment) => {
+    setSelectedAppointment(appointment);
+    setPrescriptionText("");
+    setPrescriptionModal(true);
+  };
+
+  const savePrescription = async () => {
+    if (!selectedAppointment) return;
+    if (!prescriptionText.trim()) return Alert.alert("Enter prescription details");
+
+    try {
+      const res = await fetch(`${API_URL}/appointments/${selectedAppointment._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attended: true, prescription: prescriptionText }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAppointments((prev) =>
+          prev.map((a) => (a._id === selectedAppointment._id ? data.appointment : a))
+        );
+        setPrescriptionModal(false);
+        setSelectedAppointment(null);
+        setPrescriptionText("");
+        Alert.alert("✅ Appointment marked as done with prescription!");
+      } else Alert.alert("❌ Failed to save prescription");
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Could not save prescription");
+    }
+  };
+
+  const deleteAppointment = async (id) => {
+    try {
+      await fetch(`${API_URL}/appointments/${id}`, { method: "DELETE" });
+      setAppointments((prev) => prev.filter((a) => a._id !== id));
+    } catch {
+      Alert.alert("Error", "Could not delete appointment");
+    }
+  };
+
+  // Login page
+  if (!user) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: bgColor, padding: 20 }}>
+        <Text style={{ fontSize: 26, fontWeight: "bold", textAlign: "center", color: textColor }}>
+          🏥 Health Tracker Login
+        </Text>
+        <TextInput placeholder="Email" value={email} onChangeText={setEmail} style={inputStyle} />
+        <TextInput placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry style={inputStyle} />
+        <TextInput placeholder="Name" value={name} onChangeText={setName} style={inputStyle} />
+        <TouchableOpacity onPress={handleLogin} style={btnStyle("#2563eb")}>
+          <Text style={btnText}>Login</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f8fafc", padding: 20 }}>
-      {/* Tabs */}
-      <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 20 }}>
-        <TabButton label="Profile" value="profile" />
-        <TabButton label="Appointments" value="appointments" />
-        <TabButton label="Prescriptions" value="prescriptions" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: bgColor, padding: 20 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 15 }}>
+        <Text style={{ fontSize: 22, fontWeight: "bold", color: textColor }}>🏥 Health Tracker</Text>
+        <Switch value={darkMode} onValueChange={setDarkMode} />
       </View>
 
-      {/* PROFILE PAGE */}
-      {page === "profile" && (
-        <View>
-          <Text style={{ fontSize: 22, fontWeight: "bold", marginBottom: 10 }}>🧑 Health Profile</Text>
-          {["name", "age", "conditions"].map((key) => (
-            <TextInput
-              key={key}
-              placeholder={key}
-              value={profile[key]}
-              onChangeText={(t) => setProfile({ ...profile, [key]: t })}
-              style={{
-                borderWidth: 1,
-                padding: 10,
-                marginVertical: 6,
-                borderRadius: 8,
-                backgroundColor: "white",
-              }}
-            />
-          ))}
-          <Button title="💾 Save Profile" onPress={handleSaveProfile} />
-        </View>
+      {/* Menu */}
+      <View style={{ flexDirection: "row", justifyContent: "space-around", marginBottom: 20 }}>
+        <TouchableOpacity onPress={() => setPage("dashboard")} style={btnStyle("#2563eb")}>
+          <Text style={btnText}>Dashboard</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setPage("appointments")} style={btnStyle("#22c55e")}>
+          <Text style={btnText}>Appointments</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleLogout} style={btnStyle("#f59e0b")}>
+          <Text style={btnText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Dashboard */}
+      {page === "dashboard" && (
+        <ScrollView contentContainerStyle={{ alignItems: "center" }}>
+          <TouchableOpacity onPress={pickProfileImage}>
+            {profilePic ? (
+              <Image source={{ uri: profilePic }} style={{ width: 100, height: 100, borderRadius: 50, marginBottom: 10 }} />
+            ) : (
+              <View
+                style={{
+                  width: 100,
+                  height: 100,
+                  borderRadius: 50,
+                  backgroundColor: "#94a3b8",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  marginBottom: 10,
+                }}
+              >
+                <Text style={{ color: "white", fontWeight: "bold" }}>Add</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <Text style={{ fontSize: 22, fontWeight: "bold", color: textColor }}>👋 Welcome, {user.name}</Text>
+          <Text style={{ color: textColor, marginTop: 5 }}>Email: {user.email}</Text>
+          <Text style={{ color: textColor, marginTop: 5 }}>📅 Appointments: {appointments.length}</Text>
+        </ScrollView>
       )}
 
-      {/* APPOINTMENTS PAGE */}
+      {/* Appointments */}
       {page === "appointments" && (
         <FlatList
           data={appointments}
-          keyExtractor={(_, i) => i.toString()}
+          keyExtractor={(item) => item._id}
           renderItem={({ item }) => (
-            <View style={{ backgroundColor: "white", padding: 10, marginVertical: 5, borderRadius: 10, elevation: 2 }}>
-              <Text>📆 {item.date}</Text>
-              <Text>👩‍⚕️ {item.doctor}</Text>
+            <View style={card}>
+              <Text>📅 {item.date}</Text>
+              <Text>👩‍⚕ Doctor: {item.doctor}</Text>
+              <Text>
+                ✅ Status: <Text style={{ color: item.attended ? "green" : "red" }}>{item.attended ? "Attended" : "Pending"}</Text>
+              </Text>
+
+              {!item.attended && (
+                <TouchableOpacity onPress={() => markAsDone(item)} style={btnStyle("#22c55e")}>
+                  <Text style={btnText}>Mark as Done</Text>
+                </TouchableOpacity>
+              )}
+
+              {item.attended && (
+                <Text style={{ marginTop: 5 }}>💊 Prescription: {item.prescription}</Text>
+              )}
+
+              <TouchableOpacity onPress={() => deleteAppointment(item._id)} style={btnStyle("#ef4444")}>
+                <Text style={btnText}>🗑 Delete</Text>
+              </TouchableOpacity>
             </View>
           )}
           ListFooterComponent={
             <View>
               <TextInput
-                placeholder="Date (e.g. 2025-10-30)"
+                placeholder="Date (YYYY-MM-DD)"
                 value={newAppointment.date}
                 onChangeText={(t) => setNewAppointment({ ...newAppointment, date: t })}
-                style={{
-                  borderWidth: 1,
-                  padding: 10,
-                  marginVertical: 5,
-                  borderRadius: 8,
-                  backgroundColor: "white",
-                }}
+                style={inputStyle}
               />
               <TextInput
                 placeholder="Doctor"
                 value={newAppointment.doctor}
                 onChangeText={(t) => setNewAppointment({ ...newAppointment, doctor: t })}
-                style={{
-                  borderWidth: 1,
-                  padding: 10,
-                  marginVertical: 5,
-                  borderRadius: 8,
-                  backgroundColor: "white",
-                }}
+                style={inputStyle}
               />
-              <Button title="➕ Add Appointment" onPress={handleAddAppointment} />
+              <TouchableOpacity onPress={addAppointment} style={btnStyle("#2563eb")}>
+                <Text style={btnText}>➕ Add Appointment</Text>
+              </TouchableOpacity>
             </View>
           }
         />
       )}
 
-      {/* PRESCRIPTIONS PAGE */}
-      {page === "prescriptions" && (
-        <FlatList
-          data={prescriptions}
-          keyExtractor={(_, i) => i.toString()}
-          renderItem={({ item }) => (
-            <View style={{ backgroundColor: "white", padding: 10, marginVertical: 5, borderRadius: 10 }}>
-              <Text>📋 {item.name}</Text>
-              {item.image ? (
-                <Image
-                  source={{ uri: item.image }}
-                  style={{ width: "100%", height: 150, borderRadius: 10, marginTop: 5 }}
-                />
-              ) : null}
-            </View>
-          )}
-          ListFooterComponent={
-            <View>
-              <TextInput
-                placeholder="Prescription name"
-                value={newPrescription.name}
-                onChangeText={(t) => setNewPrescription({ ...newPrescription, name: t })}
-                style={{
-                  borderWidth: 1,
-                  padding: 10,
-                  marginVertical: 5,
-                  borderRadius: 8,
-                  backgroundColor: "white",
-                }}
-              />
-              <Button title="📸 Pick Image" onPress={handlePickImage} />
-              {newPrescription.image ? (
-                <Image
-                  source={{ uri: newPrescription.image }}
-                  style={{ width: "100%", height: 150, borderRadius: 10, marginVertical: 10 }}
-                />
-              ) : null}
-              <Button title="💾 Save Prescription" onPress={handleAddPrescription} />
-            </View>
-          }
-        />
-      )}
-    </View>
+      {/* Prescription Modal */}
+      <Modal visible={prescriptionModal} transparent animationType="slide">
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <View style={{ width: "85%", backgroundColor: "white", borderRadius: 10, padding: 20 }}>
+            <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 10 }}>💊 Enter Prescription</Text>
+            <TextInput placeholder="Prescription details" value={prescriptionText} onChangeText={setPrescriptionText} style={inputStyle} />
+            <TouchableOpacity onPress={savePrescription} style={btnStyle("#22c55e")}>
+              <Text style={btnText}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setPrescriptionModal(false)} style={[btnStyle("#ef4444"), { marginTop: 10 }]}>
+              <Text style={btnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
+
+// Styles
+const inputStyle = { borderWidth: 1, borderRadius: 10, padding: 10, marginVertical: 6, backgroundColor: "white" };
+const btnStyle = (bg) => ({ backgroundColor: bg, padding: 10, borderRadius: 10, marginTop: 10 });
+const btnText = { color: "white", fontWeight: "bold", textAlign: "center" };
+const card = { backgroundColor: "white", padding: 15, borderRadius: 10, marginVertical: 6, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 5 };

@@ -6,53 +6,82 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// 🧠 Replace with your actual MongoDB connection string
+// MongoDB connection
 mongoose
-  .connect("mongodb+srv://rishikahs26_db_user:3JbmN0OU4vWuywvL@cluster1.pqwn5zo.mongodb.net/")
+  .connect(
+    "mongodb+srv://sinchanasb72_db_user:fxdFLqoHfHVPax3O@cluster0.ugdcekn.mongodb.net/HealthTrackerDB"
+  )
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB Error:", err));
 
-const Profile = mongoose.model("Profile", {
+// --- SCHEMAS ---
+const User = mongoose.model("User", {
   name: String,
-  age: String,
-  conditions: String,
+  email: String,
+  password: String,
 });
 
 const Appointment = mongoose.model("Appointment", {
+  email: String, // link to user
   date: String,
   doctor: String,
+  attended: { type: Boolean, default: false },
+  prescription: { type: String, default: "" },
 });
 
-const Prescription = mongoose.model("Prescription", {
-  name: String,
-  image: String,
+// --- LOGIN / REGISTER ---
+app.post("/login", async (req, res) => {
+  const { email, password, name } = req.body;
+  let user = await User.findOne({ email });
+
+  if (!user) {
+    user = new User({ email, password, name });
+    await user.save();
+  } else if (user.password !== password) {
+    return res.json({ success: false, message: "Invalid password" });
+  }
+
+  res.json({ success: true, user });
 });
 
-// --- ROUTES ---
-
-app.post("/profile", async (req, res) => {
-  await Profile.findOneAndUpdate({}, req.body, { upsert: true });
-  res.send("Profile saved");
+// --- GET user’s appointments ---
+app.get("/appointments/:email", async (req, res) => {
+  const { email } = req.params;
+  const appointments = await Appointment.find({ email });
+  res.json(appointments);
 });
 
-app.get("/appointments", async (req, res) => {
-  res.json(await Appointment.find());
-});
-
+// --- ADD new appointment ---
 app.post("/appointments", async (req, res) => {
-  const appointment = new Appointment(req.body);
+  const { email, date, doctor } = req.body;
+  const appointment = new Appointment({ email, date, doctor });
   await appointment.save();
-  res.send("Appointment added");
+  res.json({ success: true, message: "Appointment added", appointment });
 });
 
-app.get("/prescriptions", async (req, res) => {
-  res.json(await Prescription.find());
+// --- UPDATE appointment (mark done / add prescription) ---
+app.put("/appointments/:id", async (req, res) => {
+  const { id } = req.params;
+  const { attended, prescription } = req.body;
+
+  try {
+    const updated = await Appointment.findByIdAndUpdate(
+      id,
+      { attended, prescription },
+      { new: true }
+    );
+    res.json({ success: true, appointment: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Error updating appointment" });
+  }
 });
 
-app.post("/prescriptions", async (req, res) => {
-  const prescription = new Prescription(req.body);
-  await prescription.save();
-  res.send("Prescription added");
+// --- DELETE appointment ---
+app.delete("/appointments/:id", async (req, res) => {
+  const { id } = req.params;
+  await Appointment.findByIdAndDelete(id);
+  res.json({ success: true, message: "Appointment deleted" });
 });
 
+// --- START SERVER ---
 app.listen(5000, () => console.log("🚀 Server running on port 5000"));
