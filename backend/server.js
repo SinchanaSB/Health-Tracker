@@ -9,7 +9,7 @@ app.use(cors());
 // MongoDB connection
 mongoose
   .connect(
-    "mongodb+srv://sinchanasb72_db_user:fxdFLqoHfHVPax3O@cluster0.ugdcekn.mongodb.net/HealthTrackerDB"
+    "  "
   )
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB Error:", err));
