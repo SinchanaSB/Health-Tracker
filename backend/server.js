@@ -8,9 +8,8 @@ app.use(cors());
 
 // MongoDB connection
 mongoose
-  .connect(
-    "  "
-  )
+  .connect("      ")
+
   .then(() => console.log("✅ MongoDB Connected"))
   .catch((err) => console.error("❌ MongoDB Error:", err));
 
